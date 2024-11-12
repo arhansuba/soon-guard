@@ -1,7 +1,7 @@
 // app/src/components/layout/Footer.tsx
 
 import React from 'react';
-import { Shield, Github, Twitter, Discord } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
 export const Footer: React.FC = () => {
     const currentYear = new Date().getFullYear();
