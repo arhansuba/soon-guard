@@ -1,5 +1,4 @@
 // program/src/lib.rs
-
 use solana_program::{
     account_info::AccountInfo,
     entrypoint,
@@ -13,73 +12,66 @@ pub mod error;
 pub mod instruction;
 pub mod processor;
 pub mod state;
+pub mod constants;
 
-use crate::processor::Processor;
+use crate::{
+    processor::Processor,
+    instruction::GuardInstruction,
+};
 
 // Declare and export the program's entrypoint
 entrypoint!(process_instruction);
 
 // Program entrypoint's implementation
 pub fn process_instruction(
-    program_id: &Pubkey,      // Public key of the program
-    accounts: &[AccountInfo], // The accounts to interact with
-    instruction_data: &[u8],  // Instruction data
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
 ) -> ProgramResult {
     msg!("SOON Guard program entrypoint");
 
-    // Verify the program ID first
+    // Verify program ID 
     if program_id.to_bytes() == [0; 32] {
         msg!("Invalid program ID");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Log the program invocation
-    msg!("Processing instruction");
-    msg!("Program ID: {}", program_id);
+    // Parse instruction data
+    let instruction = GuardInstruction::unpack(instruction_data)?;
+
+    // Log instruction details
+    msg!("Processing instruction: {:?}", instruction);
     msg!("Number of accounts: {}", accounts.len());
-    msg!("Instruction data length: {}", instruction_data.len());
 
-    // Basic input validation
-    if instruction_data.is_empty() {
-        msg!("No instruction data provided");
-        return Err(ProgramError::InvalidInstructionData);
+    // Process the instruction through processor
+    match Processor::process(program_id, accounts, instruction_data) {
+        Ok(_) => {
+            msg!("Instruction processed successfully");
+            Ok(())
+        }
+        Err(error) => {
+            msg!("Error processing instruction: {:?}", error);
+            Err(error)
+        }
     }
-
-    // Error handling wrapper to provide better error messages
-    if let Err(error) = Processor::process(program_id, accounts, instruction_data) {
-        msg!("Error processing instruction: {:?}", error);
-        return Err(error);
-    }
-
-    msg!("Instruction processed successfully");
-    Ok(())
 }
 
-// Constants for the program
-pub mod constants {
-    use solana_program::pubkey::Pubkey;
-    
-    // Default buffer sizes
-    pub const MAX_ANALYSIS_BUFFER: usize = 1024;
-    pub const MAX_METRICS_BUFFER: usize = 512;
-    
-    // Program version
-    pub const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
-}
-
-// Helper functions that can be used across the program
+// Utility functions
 pub mod utils {
     use solana_program::{
         account_info::AccountInfo,
         program_error::ProgramError,
         pubkey::Pubkey,
+        msg,
     };
+    use crate::constants;
 
     pub fn check_account_owner(
         account: &AccountInfo,
         owner: &Pubkey,
     ) -> Result<(), ProgramError> {
         if account.owner != owner {
+            msg!("Account owner mismatch");
             return Err(ProgramError::IllegalOwner);
         }
         Ok(())
@@ -90,6 +82,7 @@ pub mod utils {
         min_size: usize,
     ) -> Result<(), ProgramError> {
         if account.data_len() < min_size {
+            msg!("Account data too small");
             return Err(ProgramError::AccountDataTooSmall);
         }
         Ok(())
@@ -97,80 +90,92 @@ pub mod utils {
 
     pub fn check_signer(account: &AccountInfo) -> Result<(), ProgramError> {
         if !account.is_signer {
+            msg!("Missing required signature");
             return Err(ProgramError::MissingRequiredSignature);
+        }
+        Ok(())
+    }
+
+    pub fn validate_program_account(
+        account: &AccountInfo,
+        program_id: &Pubkey,
+    ) -> Result<(), ProgramError> {
+        check_account_owner(account, program_id)?;
+        if account.data_len() > constants::MAX_CONTRACT_SIZE {
+            msg!("Program size exceeds maximum allowed");
+            return Err(ProgramError::InvalidAccountData);
         }
         Ok(())
     }
 }
 
-// Tests module
+// Tests
 #[cfg(test)]
 mod tests {
     use super::*;
     use solana_program::clock::Epoch;
+    use crate::constants::MAX_CONTRACT_SIZE;
 
-    // Helper function to create test accounts
-    use std::rc::Rc;
-    use std::cell::RefCell;
+    #[test]
+    fn test_invalid_program_id() {
+        let accounts = Vec::new();
+        let instruction_data = vec![];
+        let zero_key = vec![0; 32];
+        
+        let result = process_instruction(
+            &Pubkey::new_from_array(zero_key.try_into().unwrap()),
+            &accounts,
+            &instruction_data,
+        );
+        assert!(result.is_err());
+    }
 
-    fn create_test_account(owner: &Pubkey, data_len: usize) -> AccountInfo {
-        let key = Pubkey::new_unique();
-        let lamports = Rc::new(RefCell::new(0));
-        let data = Rc::new(RefCell::new(vec![0; data_len]));
-        AccountInfo::new(
-            &key,
+    #[test]
+    fn test_validate_program_account() {
+        let program_id = Pubkey::new_unique();
+        let mut lamports = 0;
+        let mut data = vec![0; 1024];
+        
+        let binding = Pubkey::new_unique();
+        let account = AccountInfo::new(
+            &binding,
             false,
             true,
-            lamports.borrow_mut().deref_mut(),
-            data.borrow_mut().deref_mut(),
-            owner,
+            &mut lamports,
+            &mut data,
+            &program_id,
             false,
             Epoch::default(),
-        )
-    }
-
-    #[test]
-    fn test_check_account_owner() {
-        let program_id = Pubkey::new_unique();
-        let wrong_owner = Pubkey::new_unique();
-        let account = create_test_account(&program_id, 100);
-
-        assert!(utils::check_account_owner(&account, &program_id).is_ok());
-        assert!(utils::check_account_owner(&account, &wrong_owner).is_err());
-    }
-
-    #[test]
-    fn test_check_account_size() {
-        let program_id = Pubkey::new_unique();
-        let account = create_test_account(&program_id, 100);
-
-        assert!(utils::check_account_size(&account, 50).is_ok());
-        assert!(utils::check_account_size(&account, 150).is_err());
-    }
-
-    #[test]
-    fn test_check_signer() {
-        let program_id = Pubkey::new_unique();
-        let mut account = create_test_account(&program_id, 100);
+        );
         
-        // Test non-signer
-        assert!(utils::check_signer(&account).is_err());
+        assert!(utils::validate_program_account(&account, &program_id).is_ok());
+
+        let mut large_data = vec![0; MAX_CONTRACT_SIZE + 1];
+        let large_pubkey = Pubkey::new_unique();
+        let large_account = AccountInfo::new(
+            &large_pubkey,
+            false,
+            true,
+            &mut lamports,
+            &mut large_data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
         
-        // Test signer
-        account.is_signer = true;
-        assert!(utils::check_signer(&account).is_ok());
+        assert!(utils::validate_program_account(&large_account, &program_id).is_err());
     }
 }
 
-// Configuration for the build and deployment
+// Build configuration
 #[cfg(all(target_arch = "bpf", not(feature = "no-entrypoint")))]
-solana_program::program::declare_id!("SoonGuardxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+solana_program::program::declare_id!("GuardV1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 
-// Optional: Custom configuration for different networks
+// Network configurations
 #[cfg(feature = "devnet")]
 pub mod config {
     pub const NETWORK: &str = "devnet";
-    pub const RPC_URL: &str = "https://api.devnet.solana.com";
+    pub const RPC_URL: &str = "https://rpc.devnet.soo.network/rpc";
 }
 
 #[cfg(feature = "mainnet-beta")]

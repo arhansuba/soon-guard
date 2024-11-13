@@ -1,5 +1,4 @@
 // program/src/instruction.rs
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::program_error::ProgramError;
 
@@ -47,7 +46,7 @@ impl GuardInstruction {
         let (&variant, rest) = input.split_first().ok_or(ProgramError::InvalidInstructionData)?;
         Ok(match variant {
             0 => {
-                let data_size = Self::unpack_u64(rest)?;
+                let (data_size, _) = Self::unpack_u64(rest)?;
                 Self::AnalyzeContract { data_size }
             }
             1 => {
