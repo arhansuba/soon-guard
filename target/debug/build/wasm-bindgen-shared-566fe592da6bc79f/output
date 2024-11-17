@@ -1,0 +1,2 @@
+cargo:rustc-env=SCHEMA_FILE_HASH=89356342330161978
+cargo:rustc-env=WBG_VERSION=639d21e70

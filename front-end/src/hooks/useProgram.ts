@@ -1,15 +1,25 @@
-// app/src/hooks/useProgram.ts
+'use client';
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useCallback, useMemo, useState } from 'react';
-import { PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { PROGRAM_ID, ERRORS } from '../utils/constants';
-import { GuardProgram } from '../utils/program';
+import { PublicKey } from '@solana/web3.js';
+import { ERRORS, BUFFER_SIZES } from '@/utils/constants';
+import { GuardProgram } from '@/utils/program';
+
+interface AnalyzeOptions {
+    bufferSize?: number;
+    commitment?: 'processed' | 'confirmed' | 'finalized';
+    clearError: () => void;
+}
+
+interface MetricsOptions {
+    commitment?: 'processed' | 'confirmed' | 'finalized';
+}
 
 interface UseProgramReturn {
     program: GuardProgram | null;
-    analyzeContract: (targetProgram: string) => Promise<string>;
-    recordMetrics: (gasUsed: number, success: boolean) => Promise<string>;
+    analyzeContract: (targetProgram: string, options?: AnalyzeOptions) => Promise<string>;
+    recordMetrics: (gasUsed: number, success: boolean, options?: MetricsOptions) => Promise<string>;
     isLoading: boolean;
     error: string | null;
 }
@@ -27,9 +37,16 @@ export function useProgram(): UseProgramReturn {
     }, [connection, wallet]);
 
     // Analyze contract function
-    const analyzeContract = useCallback(async (targetProgram: string): Promise<string> => {
-        if (!program) throw new Error(ERRORS.NO_PROGRAM);
-        if (!wallet.publicKey) throw new Error(ERRORS.NO_WALLET);
+    const analyzeContract = useCallback(async (
+        targetProgram: string,
+        options: AnalyzeOptions = {}
+    ): Promise<string> => {
+        if (!program) {
+            throw new Error(ERRORS.NO_PROGRAM);
+        }
+        if (!wallet.publicKey) {
+            throw new Error(ERRORS.NO_WALLET);
+        }
 
         setIsLoading(true);
         setError(null);
@@ -40,12 +57,19 @@ export function useProgram(): UseProgramReturn {
             // Create analyze instruction
             const instruction = await program.createAnalyzeContractInstruction(
                 targetProgramKey,
-                1024 // Default buffer size
+                options.bufferSize || BUFFER_SIZES.ANALYSIS
             );
 
             // Send transaction
-            const signature = await program.sendAndConfirmTransaction([instruction]);
-            
+            const signature = await program.sendAndConfirmTransaction(
+                [instruction],
+                [],
+                {
+                    commitment: options.commitment || 'confirmed',
+                    skipPreflight: false,
+                }
+            );
+
             return signature;
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -57,21 +81,38 @@ export function useProgram(): UseProgramReturn {
     }, [program, wallet.publicKey]);
 
     // Record metrics function
-    const recordMetrics = useCallback(async (gasUsed: number, success: boolean): Promise<string> => {
-        if (!program) throw new Error(ERRORS.NO_PROGRAM);
-        if (!wallet.publicKey) throw new Error(ERRORS.NO_WALLET);
+    const recordMetrics = useCallback(async (
+        gasUsed: number,
+        success: boolean,
+        options: MetricsOptions = {}
+    ): Promise<string> => {
+        if (!program) {
+            throw new Error(ERRORS.NO_PROGRAM);
+        }
+        if (!wallet.publicKey) {
+            throw new Error(ERRORS.NO_WALLET);
+        }
 
         setIsLoading(true);
         setError(null);
 
         try {
+            // Create metrics instruction
             const instruction = await program.createRecordMetricsInstruction(
                 gasUsed,
                 success
             );
 
-            const signature = await program.sendAndConfirmTransaction([instruction]);
-            
+            // Send transaction
+            const signature = await program.sendAndConfirmTransaction(
+                [instruction],
+                [],
+                {
+                    commitment: options.commitment || 'confirmed',
+                    skipPreflight: false,
+                }
+            );
+
             return signature;
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -82,11 +123,20 @@ export function useProgram(): UseProgramReturn {
         }
     }, [program, wallet.publicKey]);
 
+    // Additional utility function for error handling
+    const clearError = useCallback(() => {
+        setError(null);
+    }, []);
+
     return {
         program,
         analyzeContract,
         recordMetrics,
         isLoading,
         error,
+        clearError,
     };
 }
+
+// Type exports
+export type { AnalyzeOptions, MetricsOptions, UseProgramReturn };

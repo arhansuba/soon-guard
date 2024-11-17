@@ -7,11 +7,11 @@ description = "Security and analytics tool for SOON network"
 [features]
 no-entrypoint = []
 devnet = []
-
+testnet = []
 [dependencies]
-solana-program = "=1.17.0"
-borsh = "0.10.3"
-thiserror = "1.0"
+solana-program = "2.1.1"
+borsh = "1.5.3"
+thiserror = "2.0.3"
 num-derive = "0.4"
 num-traits = "0.2"
 
@@ -19,8 +19,8 @@ num-traits = "0.2"
 crate-type = ["cdylib", "lib"]
 
 [dev-dependencies]
-solana-program-test = "1.17.0"
-solana-sdk = "1.17.0"
+solana-program-test = "2.1.1"
+solana-sdk = "2.1.1"
 
 [profile.release]
 overflow-checks = true

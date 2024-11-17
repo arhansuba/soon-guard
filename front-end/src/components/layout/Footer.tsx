@@ -1,7 +1,7 @@
 // app/src/components/layout/Footer.tsx
 
 import React from 'react';
-import { Shield } from 'lucide-react';
+import { Github, Shield, Twitter } from 'lucide-react';
 
 export const Footer: React.FC = () => {
     const currentYear = new Date().getFullYear();
@@ -28,7 +28,7 @@ export const Footer: React.FC = () => {
         social: [
             { name: 'Github', href: '#', icon: Github },
             { name: 'Twitter', href: '#', icon: Twitter },
-            { name: 'Discord', href: '#', icon: Discord },
+            //{ name: 'Discord', href: '#', icon: Discord },
         ],
     };
 

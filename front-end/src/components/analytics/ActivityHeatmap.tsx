@@ -1,5 +1,3 @@
-// app/src/components/analytics/ActivityHeatmap.tsx
-
 import React from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -149,3 +147,20 @@ export const ActivityHeatmap: React.FC = () => {
                                 <div className="flex space-x-1">
                                     {Array.from({ length: 5 }).map((_, i) => (
                                         <div
+                                            key={i}
+                                            className="w-4 h-4 rounded"
+                                            style={{
+                                                backgroundColor: getColor((i + 1) * 20),
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                                <span className="text-xs text-gray-500">High</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+};

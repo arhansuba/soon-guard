@@ -7,19 +7,13 @@ import { RiskScanner } from '@/components/security/RiskScanner';
 import { ContractMetrics } from '@/components/analytics/ContractMetrics';
 import { NetworkHealth } from '@/components/analytics/NetworkHealth';
 import { GasTracker } from '@/components/monitoring/GasTracker';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
-    Shield, 
-    Search, 
-    Zap,
     Users,
     BookOpen,
     Code,
     ArrowRight,
-    ChevronDown,
-    ExternalLink,
-    PieChart
-} from 'lucide-react';
+    ExternalLink} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';

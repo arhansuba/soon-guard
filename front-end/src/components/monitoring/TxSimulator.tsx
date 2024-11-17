@@ -42,7 +42,7 @@ export const TxSimulator: React.FC = () => {
             );
 
             // Simulate transaction
-            const simulation = await program.connection.simulateTransaction(
+            const simulation = await program.simulateTransaction(
                 instruction
             );
 

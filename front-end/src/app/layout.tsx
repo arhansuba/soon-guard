@@ -1,18 +1,14 @@
 // app/src/app/layout.tsx
-
+'use client';
 import { Inter } from 'next/font/google';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
-import { WalletProvider } from '@/components/providers/WalletProvider';
+import WalletProvider from '../components/providers/WalletProvider';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: 'SOON Guard | Smart Contract Security & Analytics',
-  description: 'Advanced security analysis and monitoring tools for SOON network smart contracts',
-  keywords: 'blockchain, security, analytics, smart contracts, SOON, monitoring',
-};
+
 
 export default function RootLayout({
   children,

@@ -1,5 +1,3 @@
-// app/src/utils/program.ts
-
 import {
     Connection,
     PublicKey,
@@ -7,30 +5,52 @@ import {
     SystemProgram,
     Transaction,
     SendOptions,
+    Signer,
+    WalletContextState,
 } from '@solana/web3.js';
 import { BN } from 'bn.js';
-import { PROGRAM_ID, SEEDS, BUFFER_SIZES } from './constants';
+import { PROGRAM_ID, SEEDS, BUFFER_SIZES, ERRORS, RISK_THRESHOLDS } from './constants';
+
+interface AnalysisResult {
+    riskScore: number;
+    vulnerabilityCount: number;
+    timestamp: number;
+    details?: Record<string, any>;
+}
+
+interface MetricsData {
+    totalTransactions: number;
+    totalGasUsed: number;
+    successRate: number;
+    lastUpdated: number;
+}
 
 export class GuardProgram {
-    constructor(
-        private connection: Connection,
-        private wallet: any, // Wallet type depends on your wallet adapter
-    ) {}
+    private connection: Connection;
+    private wallet: WalletContextState;
+
+    constructor(connection: Connection, wallet: WalletContextState) {
+        this.connection = connection;
+        this.wallet = wallet;
+    }
 
     /**
      * Creates instruction to analyze a contract
      */
     async createAnalyzeContractInstruction(
         targetProgram: PublicKey,
-        dataSize: number,
+        dataSize: number = BUFFER_SIZES.ANALYSIS
     ): Promise<TransactionInstruction> {
-        // Derive PDA for analysis state account
+        if (!this.wallet.publicKey) {
+            throw new Error(ERRORS.NO_WALLET);
+        }
+
         const [analysisAccount] = await PublicKey.findProgramAddress(
             [
                 Buffer.from(SEEDS.ANALYSIS),
                 targetProgram.toBuffer(),
             ],
-            PROGRAM_ID,
+            PROGRAM_ID
         );
 
         const data = Buffer.from([
@@ -43,6 +63,7 @@ export class GuardProgram {
                 { pubkey: targetProgram, isSigner: false, isWritable: false },
                 { pubkey: analysisAccount, isSigner: false, isWritable: true },
                 { pubkey: this.wallet.publicKey, isSigner: true, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
             programId: PROGRAM_ID,
             data,
@@ -54,11 +75,15 @@ export class GuardProgram {
      */
     async createRecordMetricsInstruction(
         gasUsed: number,
-        success: boolean,
+        success: boolean
     ): Promise<TransactionInstruction> {
+        if (!this.wallet.publicKey) {
+            throw new Error(ERRORS.NO_WALLET);
+        }
+
         const [metricsAccount] = await PublicKey.findProgramAddress(
             [Buffer.from(SEEDS.METRICS)],
-            PROGRAM_ID,
+            PROGRAM_ID
         );
 
         const data = Buffer.from([
@@ -71,6 +96,7 @@ export class GuardProgram {
             keys: [
                 { pubkey: metricsAccount, isSigner: false, isWritable: true },
                 { pubkey: this.wallet.publicKey, isSigner: true, isWritable: false },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
             programId: PROGRAM_ID,
             data,
@@ -80,22 +106,21 @@ export class GuardProgram {
     /**
      * Fetches and parses security analysis results
      */
-    async fetchAnalysis(targetProgram: PublicKey) {
+    async fetchAnalysis(targetProgram: PublicKey): Promise<AnalysisResult> {
         const [analysisAccount] = await PublicKey.findProgramAddress(
             [
                 Buffer.from(SEEDS.ANALYSIS),
                 targetProgram.toBuffer(),
             ],
-            PROGRAM_ID,
+            PROGRAM_ID
         );
 
         try {
             const accountInfo = await this.connection.getAccountInfo(analysisAccount);
             if (!accountInfo) {
-                throw new Error('Analysis account not found');
+                throw new Error(ERRORS.INVALID_ACCOUNT);
             }
 
-            // Parse account data based on your schema
             return this.parseAnalysisData(accountInfo.data);
         } catch (error) {
             console.error('Error fetching analysis:', error);
@@ -106,19 +131,18 @@ export class GuardProgram {
     /**
      * Fetches and parses metrics data
      */
-    async fetchMetrics() {
+    async fetchMetrics(): Promise<MetricsData> {
         const [metricsAccount] = await PublicKey.findProgramAddress(
             [Buffer.from(SEEDS.METRICS)],
-            PROGRAM_ID,
+            PROGRAM_ID
         );
 
         try {
             const accountInfo = await this.connection.getAccountInfo(metricsAccount);
             if (!accountInfo) {
-                throw new Error('Metrics account not found');
+                throw new Error(ERRORS.INVALID_ACCOUNT);
             }
 
-            // Parse account data based on your schema
             return this.parseMetricsData(accountInfo.data);
         } catch (error) {
             console.error('Error fetching metrics:', error);
@@ -131,18 +155,31 @@ export class GuardProgram {
      */
     async sendAndConfirmTransaction(
         instructions: TransactionInstruction[],
-        signers?: any[],
-        options?: SendOptions,
+        signers: Signer[] = [],
+        options?: SendOptions
     ): Promise<string> {
+        if (!this.wallet.signTransaction || !this.wallet.publicKey) {
+            throw new Error(ERRORS.NO_WALLET);
+        }
+
         try {
             const transaction = new Transaction().add(...instructions);
-            const signature = await this.wallet.sendTransaction(
-                transaction,
-                this.connection,
-                { signers, ...options },
+            transaction.feePayer = this.wallet.publicKey;
+            transaction.recentBlockhash = (
+                await this.connection.getLatestBlockhash()
+            ).blockhash;
+
+            if (signers.length > 0) {
+                transaction.partialSign(...signers);
+            }
+
+            const signedTx = await this.wallet.signTransaction(transaction);
+            const signature = await this.connection.sendRawTransaction(
+                signedTx.serialize(),
+                options
             );
 
-            await this.connection.confirmTransaction(signature);
+            await this.connection.confirmTransaction(signature, 'confirmed');
             return signature;
         } catch (error) {
             console.error('Transaction failed:', error);
@@ -150,41 +187,44 @@ export class GuardProgram {
         }
     }
 
-    private parseAnalysisData(data: Buffer) {
-        // Implement parsing logic based on your account schema
+    private parseAnalysisData(data: Buffer): AnalysisResult {
         return {
             riskScore: data[0],
             vulnerabilityCount: new BN(data.slice(1, 3), 'le').toNumber(),
             timestamp: new BN(data.slice(3, 11), 'le').toNumber(),
-            // Add more fields as needed
+            details: this.parseDetails(data.slice(11)),
         };
     }
 
-    private parseMetricsData(data: Buffer) {
-        // Implement parsing logic based on your account schema
+    private parseMetricsData(data: Buffer): MetricsData {
         return {
             totalTransactions: new BN(data.slice(0, 8), 'le').toNumber(),
             totalGasUsed: new BN(data.slice(8, 16), 'le').toNumber(),
             successRate: data[16],
-            // Add more fields as needed
+            lastUpdated: new BN(data.slice(17, 25), 'le').toNumber(),
         };
+    }
+
+    private parseDetails(data: Buffer): Record<string, any> {
+        // Implement custom parsing logic for additional details
+        return {};
     }
 }
 
-export function getRiskLevel(score: number): 'LOW' | 'MEDIUM' | 'HIGH' {
-    if (score >= 80) return 'LOW';
-    if (score >= 50) return 'MEDIUM';
+export const getRiskLevel = (score: number): keyof typeof RISK_THRESHOLDS => {
+    if (score >= RISK_THRESHOLDS.LOW) return 'LOW';
+    if (score >= RISK_THRESHOLDS.MEDIUM) return 'MEDIUM';
     return 'HIGH';
-}
+};
 
-export function formatGas(gas: number): string {
-    return gas.toLocaleString();
-}
+export const formatGas = (gas: number): string => {
+    return new Intl.NumberFormat().format(gas);
+};
 
-export function calculateSuccessRate(
+export const calculateSuccessRate = (
     successful: number,
-    total: number,
-): number {
+    total: number
+): number => {
     if (total === 0) return 0;
     return Math.round((successful / total) * 100);
-}
+};
