@@ -2,18 +2,24 @@
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { useCallback, useMemo, useState } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Commitment, TransactionConfirmationStrategy } from '@solana/web3.js';
 import { ERRORS, BUFFER_SIZES } from '@/utils/constants';
 import { GuardProgram } from '@/utils/program';
 
 interface AnalyzeOptions {
     bufferSize?: number;
-    commitment?: 'processed' | 'confirmed' | 'finalized';
-    clearError: () => void;
+    commitment?: Commitment;
 }
 
 interface MetricsOptions {
-    commitment?: 'processed' | 'confirmed' | 'finalized';
+    commitment?: Commitment;
+}
+
+interface TransactionOptions {
+    skipPreflight?: boolean;
+    maxRetries?: number;
+    minContextSlot?: number;
+    confirmStrategy?: TransactionConfirmationStrategy;
 }
 
 interface UseProgramReturn {
@@ -22,6 +28,7 @@ interface UseProgramReturn {
     recordMetrics: (gasUsed: number, success: boolean, options?: MetricsOptions) => Promise<string>;
     isLoading: boolean;
     error: string | null;
+    clearError: () => void;
 }
 
 export function useProgram(): UseProgramReturn {
@@ -35,6 +42,11 @@ export function useProgram(): UseProgramReturn {
         if (!wallet.publicKey) return null;
         return new GuardProgram(connection, wallet);
     }, [connection, wallet]);
+
+    // Clear error utility
+    const clearError = useCallback(() => {
+        setError(null);
+    }, []);
 
     // Analyze contract function
     const analyzeContract = useCallback(async (
@@ -60,14 +72,27 @@ export function useProgram(): UseProgramReturn {
                 options.bufferSize || BUFFER_SIZES.ANALYSIS
             );
 
+            // Transaction options
+            const txOptions: TransactionOptions = {
+                skipPreflight: false,
+                maxRetries: 3,
+                minContextSlot: 0,
+            };
+
+            if (options.commitment) {
+                txOptions.confirmStrategy = {
+                    minContextSlot: 0,
+                    nonceAccountPubkey: new PublicKey('11111111111111111111111111111111'),
+                    nonceValue: options.commitment,
+                    signature: '', // Provide a valid signature here
+                };
+            }
+
             // Send transaction
             const signature = await program.sendAndConfirmTransaction(
                 [instruction],
                 [],
-                {
-                    commitment: options.commitment || 'confirmed',
-                    skipPreflight: false,
-                }
+                txOptions
             );
 
             return signature;
@@ -97,20 +122,32 @@ export function useProgram(): UseProgramReturn {
         setError(null);
 
         try {
-            // Create metrics instruction
             const instruction = await program.createRecordMetricsInstruction(
                 gasUsed,
                 success
             );
 
+            // Transaction options
+            const txOptions: TransactionOptions = {
+                skipPreflight: false,
+                maxRetries: 3,
+                minContextSlot: 0,
+            };
+
+            if (options.commitment) {
+                txOptions.confirmStrategy = {
+                    minContextSlot: 0,
+                    nonceAccountPubkey: new PublicKey('11111111111111111111111111111111'),
+                    nonceValue: options.commitment,
+                    signature: '', // Provide a valid signature here
+                };
+            }
+
             // Send transaction
             const signature = await program.sendAndConfirmTransaction(
                 [instruction],
                 [],
-                {
-                    commitment: options.commitment || 'confirmed',
-                    skipPreflight: false,
-                }
+                txOptions
             );
 
             return signature;
@@ -123,11 +160,6 @@ export function useProgram(): UseProgramReturn {
         }
     }, [program, wallet.publicKey]);
 
-    // Additional utility function for error handling
-    const clearError = useCallback(() => {
-        setError(null);
-    }, []);
-
     return {
         program,
         analyzeContract,
@@ -139,4 +171,4 @@ export function useProgram(): UseProgramReturn {
 }
 
 // Type exports
-export type { AnalyzeOptions, MetricsOptions, UseProgramReturn };
+export type { AnalyzeOptions, MetricsOptions, TransactionOptions, UseProgramReturn };

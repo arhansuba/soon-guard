@@ -6,10 +6,11 @@ import {
     Transaction,
     SendOptions,
     Signer,
-    WalletContextState,
+    //WalletContextState,
 } from '@solana/web3.js';
 import { BN } from 'bn.js';
 import { PROGRAM_ID, SEEDS, BUFFER_SIZES, ERRORS, RISK_THRESHOLDS } from './constants';
+import { WalletContextState } from '@solana/wallet-adapter-react';
 
 interface AnalysisResult {
     riskScore: number;
@@ -26,6 +27,7 @@ interface MetricsData {
 }
 
 export class GuardProgram {
+    [x: string]: any;
     private connection: Connection;
     private wallet: WalletContextState;
 
