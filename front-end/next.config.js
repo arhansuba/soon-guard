@@ -1,32 +1,29 @@
+// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        crypto: false,
-        os: false,
-        path: false,
-        stream: false,
-        http: false,
-        https: false,
-        zlib: false,
-        encoding: false
-      };
-    }
-    return config;
+  swcMinify: true,
+  // Enable static export
+  output: 'standalone',
+  // Configure image domains if needed
+  images: {
+    domains: ['api.placeholder.com'],
+    unoptimized: true,
   },
-  transpilePackages: [
-    "@solana/wallet-adapter-base",
-    "@solana/wallet-adapter-react",
-    "@solana/wallet-adapter-wallets",
-    "@solana/wallet-adapter-phantom",
-    "@solana/wallet-adapter-solflare"
-  ]
-}
+  // Add redirects for SPA-like behavior
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        destination: '/',
+        permanent: false,
+      },
+    ];
+  },
+  // Environment variables that need to be exposed to the browser
+  env: {
+    NEXT_PUBLIC_RPC_URL: 'https://rpc.devnet.soo.network/rpc',
+  }
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
